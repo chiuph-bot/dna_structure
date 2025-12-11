@@ -150,9 +150,9 @@
 
 <!-- NEW: Device Selection Bar -->
 <div id="device-bar">
-    <button class="device-btn" onclick="setMode('mobile')">Mobile Phone</button>
-    <button class="device-btn" onclick="setMode('tablet')">Tablet</button>
-    <button class="device-btn active" onclick="setMode('computer')">Computer</button>
+    <button class="device-btn" onclick="setMode('mobile', this)">Mobile Phone</button>
+    <button class="device-btn" onclick="setMode('tablet', this)">Tablet</button>
+    <button class="device-btn active" onclick="setMode('computer', this)">Computer</button>
 </div>
 
 <!-- NEW: Viewport Container (Holds Scene + UI) -->
@@ -227,13 +227,33 @@
     const viewport = document.getElementById('viewport-container');
     const btns = document.querySelectorAll('.device-btn');
 
-    function setMode(mode) {
+    function setMode(mode, btn) {
         // Update Class on Viewport
         viewport.className = `mode-${mode}`;
         
         // Update Buttons
-        btns.forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
+        btns.forEach(b => b.classList.remove('active'));
+        if(btn) btn.classList.add('active');
+
+        // Adjust DNA Model Size and Position based on mode
+        if (typeof dnaGroup !== 'undefined') {
+            if (mode === 'mobile') {
+                // Shrink and Center
+                // UPDATED: Move down Y axis (-8) to clear the top UI box
+                dnaGroup.scale.set(0.45, 0.45, 0.45);
+                dnaGroup.position.set(0, -8, 0); 
+            } else if (mode === 'tablet') {
+                // Slight Shrink and Move Right
+                // UPDATED: Move right X axis (10) to clear side UI box
+                dnaGroup.scale.set(0.65, 0.65, 0.65);
+                dnaGroup.position.set(10, 0, 0); 
+            } else {
+                // Computer (Default)
+                // UPDATED: Full size, move right
+                dnaGroup.scale.set(1, 1, 1);
+                dnaGroup.position.set(10, 0, 0); 
+            }
+        }
 
         // Trigger resize for Three.js
         setTimeout(handleResize, 350); // Wait for CSS transition
