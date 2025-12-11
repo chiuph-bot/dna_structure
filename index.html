@@ -125,8 +125,11 @@
         /* Header Layout for Toggle */
         .panel-header {
             display: flex;
-            justify-content: space-between;
+            /* UPDATED: Align to start (left) */
+            justify-content: flex-start;
             align-items: center;
+            /* UPDATED: Add spacing between button and title */
+            gap: 15px; 
             border-bottom: 1px solid #444;
             padding-bottom: 10px;
             margin-bottom: 15px;
@@ -210,9 +213,9 @@
     <!-- TOP LEFT PANEL: Settings & Legend -->
     <div id="ui-left" class="ui-panel">
         <div class="panel-header">
-            <h2>DNA Settings</h2>
-            <!-- Minimize Button -->
+            <!-- UPDATED: Minimize Button moved to the left -->
             <button id="minimize-btn" class="toggle-btn" title="Minimize/Expand">−</button>
+            <h2>DNA Settings</h2>
         </div>
 
         <div class="control-group">
