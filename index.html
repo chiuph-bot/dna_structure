@@ -5,14 +5,88 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive DNA Structure Model</title>
     <style>
-        /* UPDATED: Background black, text white */
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; }
-        
-        /* UI Panels Common Style */
+        /* UPDATED: Body acts as the background/stage for the simulated device */
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #1a1a1a; /* Dark gray background behind the device */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            color: white; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* --- NEW: DEVICE SELECTION BAR --- */
+        #device-bar {
+            background: #333;
+            padding: 10px 20px;
+            border-bottom-left-radius: 10px;
+            border-bottom-right-radius: 10px;
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+            z-index: 2000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        .device-btn {
+            background: #444;
+            color: #ddd;
+            border: 1px solid #555;
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .device-btn:hover { background: #555; }
+        .device-btn.active { background: #00d2ff; color: #000; border-color: #00d2ff; }
+
+
+        /* --- NEW: SIMULATED VIEWPORT WRAPPER --- */
+        /* This container holds the Canvas + UI Panels. It resizes based on selection. */
+        #viewport-container {
+            position: relative;
+            background-color: #050505; /* Black background for the "screen" */
+            overflow: hidden;
+            transition: width 0.3s, height 0.3s, border 0.3s;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            /* Default: Computer (Full available space minus header) */
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Device Specific Styles applied via JS */
+        .mode-mobile {
+            width: 375px !important;
+            height: 667px !important;
+            border: 12px solid #333;
+            border-radius: 30px;
+        }
+
+        .mode-tablet {
+            width: 768px !important;
+            height: 1024px !important; /* Scale might be needed on small screens, but we keep simple for now */
+            border: 12px solid #333;
+            border-radius: 20px;
+        }
+
+        .mode-computer {
+            width: 100% !important;
+            height: 100% !important;
+            border: none;
+            border-radius: 0;
+        }
+
+
+        /* --- UI PANELS (Inside Viewport) --- */
         .ui-panel {
             position: absolute;
             top: 20px;
-            background: rgba(20, 20, 30, 0.9); /* Dark panel for contrast */
+            background: rgba(20, 20, 30, 0.9);
             padding: 20px;
             border-radius: 12px;
             border: 1px solid #444;
@@ -20,36 +94,35 @@
             pointer-events: auto;
             user-select: none;
             color: white; 
+            z-index: 100;
         }
 
-        /* Top Right: Only Pause/Resume */
         #ui-right {
             right: 20px;
             width: auto;
         }
 
-        /* Top Left: Controls & Legend */
         #ui-left {
             left: 20px;
             width: 320px;
+            max-height: 80%; /* Prevent overflow on small mobile screens */
+            overflow-y: auto;
         }
 
         h2 { margin-top: 0; font-size: 18px; color: #00d2ff; text-align: center; border-bottom: 1px solid #444; padding-bottom: 10px; }
 
-        /* Controls */
         .control-group { margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px; }
         
-        button {
+        button.action-btn {
             background: #00d2ff; color: #000; border: none; padding: 10px 20px;
             font-weight: bold; cursor: pointer; border-radius: 6px;
             transition: background 0.2s; font-size: 14px; white-space: nowrap;
         }
-        button:hover { background: #66e0ff; }
+        button.action-btn:hover { background: #66e0ff; }
         
         label { font-size: 12px; color: #aaa; display: flex; justify-content: space-between; }
         input[type=range] { width: 100%; cursor: pointer; }
 
-        /* Annotated Diagram / Legend */
         .legend { margin-top: 15px; border-top: 1px solid #444; paddingTop: 15px; }
         .legend h3 { font-size: 14px; margin: 0 0 10px 0; color: #fff; }
         
@@ -61,6 +134,11 @@
             clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
             border: none;
         }
+        
+        /* Scrollbar for left panel if it gets too tall on mobile */
+        #ui-left::-webkit-scrollbar { width: 6px; }
+        #ui-left::-webkit-scrollbar-track { background: #222; }
+        #ui-left::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
 
     </style>
     <!-- Load Three.js -->
@@ -70,83 +148,113 @@
 </head>
 <body>
 
-<!-- TOP LEFT PANEL: Settings & Legend -->
-<div id="ui-left" class="ui-panel">
-    <h2>DNA Settings</h2>
+<!-- NEW: Device Selection Bar -->
+<div id="device-bar">
+    <button class="device-btn" onclick="setMode('mobile')">Mobile Phone</button>
+    <button class="device-btn" onclick="setMode('tablet')">Tablet</button>
+    <button class="device-btn active" onclick="setMode('computer')">Computer</button>
+</div>
 
-    <div class="control-group">
-        <label for="speedRange"><span>Rotation Speed</span> <span id="speedVal">20%</span></label>
-        <input type="range" id="speedRange" min="0" max="0.05" step="0.001" value="0.01">
-    </div>
+<!-- NEW: Viewport Container (Holds Scene + UI) -->
+<div id="viewport-container" class="mode-computer">
+    
+    <!-- TOP LEFT PANEL: Settings & Legend -->
+    <div id="ui-left" class="ui-panel">
+        <h2>DNA Settings</h2>
 
-    <div class="control-group">
-        <label for="twistRange"><span>Helix Twist Extent</span> <span id="twistVal">Normal</span></label>
-        <input type="range" id="twistRange" min="0.1" max="1.0" step="0.05" value="0.5">
-    </div>
-
-    <div class="legend">
-        <h3>Annotated Diagram & Key</h3>
-        
-        <div class="legend-item">
-            <div class="color-box shape-circle" style="background: #ff0000;"></div>
-            <span><strong>Phosphate Group</strong> (Outer sphere)</span>
-        </div>
-        
-        <div class="legend-item">
-            <div class="color-box" style="background: #0044ff;"></div>
-            <span><strong>Carbon Sugar</strong> (Deoxyribose)</span>
-        </div>
-        
-        <div class="legend-item">
-            <div class="color-box" style="background: #00cc00; height: 4px; align-self: center;"></div>
-            <span><strong>Phosphate-Sugar Bond</strong> (Backbone)</span>
+        <div class="control-group">
+            <label for="speedRange"><span>Rotation Speed</span> <span id="speedVal">20%</span></label>
+            <input type="range" id="speedRange" min="0" max="0.05" step="0.001" value="0.01">
         </div>
 
-        <div class="legend-item">
-            <div class="color-box shape-hex" style="background: #ffcc00; width: 14px; height: 16px;"></div>
-            <span><strong>2-Ring Base</strong> (Larger Hex)</span>
+        <div class="control-group">
+            <label for="twistRange"><span>Helix Twist Extent</span> <span id="twistVal">Normal</span></label>
+            <input type="range" id="twistRange" min="0.1" max="1.0" step="0.05" value="0.5">
         </div>
 
-        <div class="legend-item">
-            <div class="color-box shape-hex" style="background: #aa00ff; width: 14px; height: 16px;"></div>
-            <span><strong>3-Ring Base</strong> (Larger Hex)</span>
-        </div>
-
-        <div class="legend-item">
-             <div style="width: 16px; height: 16px; margin-right: 10px; display: flex; align-items: center; justify-content: center; gap: 2px;">
-                <!-- Updated dots to white for black background -->
-                <div style="width: 2px; height: 2px; background: #fff; border-radius: 50%;"></div>
-                <div style="width: 2px; height: 2px; background: #fff; border-radius: 50%;"></div>
-                <div style="width: 2px; height: 2px; background: #fff; border-radius: 50%;"></div>
+        <div class="legend">
+            <h3>Annotated Diagram & Key</h3>
+            
+            <div class="legend-item">
+                <div class="color-box shape-circle" style="background: #ff0000;"></div>
+                <span><strong>Phosphate Group</strong> (Outer sphere)</span>
             </div>
-            <span><strong>Hydrogen Bond</strong> (Dotted Line)</span>
-        </div>
-        
-        <p style="font-size: 11px; color: #888; margin-top: 10px; line-height: 1.4;">
-            <strong>Interaction:</strong> Drag to rotate, Scroll to zoom.
-        </p>
-    </div>
-</div>
+            
+            <div class="legend-item">
+                <div class="color-box" style="background: #0044ff;"></div>
+                <span><strong>Carbon Sugar</strong> (Deoxyribose)</span>
+            </div>
+            
+            <div class="legend-item">
+                <div class="color-box" style="background: #00cc00; height: 4px; align-self: center;"></div>
+                <span><strong>Phosphate-Sugar Bond</strong> (Backbone)</span>
+            </div>
 
-<!-- TOP RIGHT PANEL: Pause Button -->
-<div id="ui-right" class="ui-panel">
-    <button id="toggleBtn">PAUSE ROTATION</button>
-</div>
+            <div class="legend-item">
+                <div class="color-box shape-hex" style="background: #ffcc00; width: 14px; height: 16px;"></div>
+                <span><strong>2-Ring Base</strong> (Larger Hex)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="color-box shape-hex" style="background: #aa00ff; width: 14px; height: 16px;"></div>
+                <span><strong>3-Ring Base</strong> (Larger Hex)</span>
+            </div>
+
+            <div class="legend-item">
+                <div style="width: 16px; height: 16px; margin-right: 10px; display: flex; align-items: center; justify-content: center; gap: 2px;">
+                    <div style="width: 2px; height: 2px; background: #fff; border-radius: 50%;"></div>
+                    <div style="width: 2px; height: 2px; background: #fff; border-radius: 50%;"></div>
+                    <div style="width: 2px; height: 2px; background: #fff; border-radius: 50%;"></div>
+                </div>
+                <span><strong>Hydrogen Bond</strong> (Dotted Line)</span>
+            </div>
+            
+            <p style="font-size: 11px; color: #888; margin-top: 10px; line-height: 1.4;">
+                <strong>Interaction:</strong> Drag to rotate, Scroll to zoom.
+            </p>
+        </div>
+    </div>
+
+    <!-- TOP RIGHT PANEL: Pause Button -->
+    <div id="ui-right" class="ui-panel">
+        <button id="toggleBtn" class="action-btn">PAUSE ROTATION</button>
+    </div>
+
+</div> <!-- End Viewport Container -->
 
 <script>
+    // --- MODE SELECTION LOGIC ---
+    const viewport = document.getElementById('viewport-container');
+    const btns = document.querySelectorAll('.device-btn');
+
+    function setMode(mode) {
+        // Update Class on Viewport
+        viewport.className = `mode-${mode}`;
+        
+        // Update Buttons
+        btns.forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+
+        // Trigger resize for Three.js
+        setTimeout(handleResize, 350); // Wait for CSS transition
+    }
+
+    // --- THREE.JS LOGIC ---
+
     // 1. SCENE SETUP
     const scene = new THREE.Scene();
-    // UPDATED: Black background
     scene.background = new THREE.Color(0x050505);
     scene.fog = new THREE.FogExp2(0x050505, 0.02);
 
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // Initial Camera Setup
+    const camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.1, 1000);
     camera.position.set(0, 0, 45); 
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+    renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+    viewport.appendChild(renderer.domElement);
 
+    // Controls need to bind to the renderer domElement, not window
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
@@ -169,8 +277,6 @@
     const matBond = new THREE.MeshBasicMaterial({ color: 0x00cc00 });                     
     const matBase2Ring = new THREE.MeshPhongMaterial({ color: 0xffcc00, shininess: 60 }); 
     const matBase3Ring = new THREE.MeshPhongMaterial({ color: 0xaa00ff, shininess: 60 }); 
-    
-    // UPDATED: White material for the "dots" of the hydrogen bond for visibility on black
     const matHDot = new THREE.MeshBasicMaterial({ color: 0xffffff }); 
 
     // 4. GEOMETRIES
@@ -178,13 +284,10 @@
     const geoSugar = new THREE.CylinderGeometry(0.7, 0.7, 0.5, 5);
     const geoRing = new THREE.TorusGeometry(0.55, 0.15, 8, 6); 
     const geoBond = new THREE.CylinderGeometry(0.1, 0.1, 1);
-    
-    // Geometry for a single dash in the hydrogen bond
     const geoDash = new THREE.CylinderGeometry(0.08, 0.08, 0.3, 8); 
 
     // 5. DNA CONTAINER
     const dnaGroup = new THREE.Group();
-    // UPDATED: Shifted to the right (x=10) so the left box doesn't cover it
     dnaGroup.position.x = 10; 
     scene.add(dnaGroup);
 
@@ -192,34 +295,25 @@
     const numPairs = 30;
     const radius = 6;
     const heightPerPair = 1.2;
-    let twistPerPair = 0.5; // Controlled by slider
+    let twistPerPair = 0.5;
     
-    // Constants used for gap calculation
     const baseSeparation = 1.2;
     const baseStartOffset = 0.8;
 
-    // Helper to create a multi-ring base
     function createBase(numRings, material) {
         const baseGroup = new THREE.Group();
-        
         for(let r=0; r<numRings; r++) {
             const ringMesh = new THREE.Mesh(geoRing, material);
-            // Rotate Z by PI/6 (30 deg) to orient the hexagon flat side
             ringMesh.rotation.set(Math.PI / 2, 0, Math.PI / 6); 
-            
-            // Stack them along Z
             ringMesh.position.z = r * baseSeparation;
             baseGroup.add(ringMesh);
         }
-        
         const wrapper = new THREE.Group();
-        // Shift meshes so Z=0 is the attachment point to the sugar
         baseGroup.position.z = baseStartOffset; 
         wrapper.add(baseGroup);
         return wrapper;
     }
 
-    // FUNCTION TO BUILD DNA (called initially and on slider change)
     function buildDNA() {
         while(dnaGroup.children.length > 0){ 
             dnaGroup.remove(dnaGroup.children[0]); 
@@ -229,17 +323,14 @@
             const y = (i * heightPerPair) - (numPairs * heightPerPair / 2);
             const angle = i * twistPerPair;
 
-            // --- STRAND 1 COORDINATES ---
             const x1 = Math.cos(angle) * radius;
             const z1 = Math.sin(angle) * radius;
-
-            // --- STRAND 2 COORDINATES (Opposite side) ---
             const x2 = Math.cos(angle + Math.PI) * radius;
             const z2 = Math.sin(angle + Math.PI) * radius;
 
             const isStrand1TwoRing = i % 2 === 0;
 
-            // === STRAND 1 ===
+            // STRAND 1
             const sugar1 = new THREE.Mesh(geoSugar, matSugar);
             sugar1.position.set(x1, y, z1);
             sugar1.rotation.y = angle;
@@ -265,7 +356,7 @@
             base1.lookAt(0, y, 0); 
             dnaGroup.add(base1);
 
-            // === STRAND 2 ===
+            // STRAND 2
             const sugar2 = new THREE.Mesh(geoSugar, matSugar);
             sugar2.position.set(x2, y, z2);
             sugar2.rotation.y = angle + Math.PI;
@@ -291,63 +382,36 @@
             base2.lookAt(0, y, 0);
             dnaGroup.add(base2);
 
-            // === UPDATED CENTRAL H-BOND (GAP FILLING) ===
-            // Calculate where the bases end to fill the gap exactly
-            
-            // Length of base 1 (distance from x1,z1 towards center)
+            // HYDROGEN BOND
             const rings1 = isStrand1TwoRing ? 2 : 3;
-            // The last ring is at: offset + (rings-1)*separation
-            // But we want visual edge, so let's add ~0.5 for ring radius
             const len1 = baseStartOffset + (rings1 - 1) * baseSeparation; 
-            
-            // Length of base 2
             const rings2 = isStrand1TwoRing ? 3 : 2;
             const len2 = baseStartOffset + (rings2 - 1) * baseSeparation;
             
-            // Radius is 6.
-            // Inner edge of Base 1 is at (Radius - len1)
-            // Inner edge of Base 2 is at (Radius - len2) on the other side
-            // Total Gap = (Radius - len1) + (Radius - len2)
             const innerEdge1 = radius - len1;
             const innerEdge2 = radius - len2;
             const totalGap = innerEdge1 + innerEdge2;
-            
-            // Offset calculation:
-            // If len1 is smaller (short base), innerEdge1 is larger (gap starts further out)
-            // We need to shift the bond towards the shorter base.
-            // Shift = (innerEdge1 - innerEdge2) / 2
             const gapOffset = (innerEdge1 - innerEdge2) / 2;
             
-            // Create bond group
             const hBondGroup = new THREE.Group();
-            
-            // Add a small overlap (0.8) so lines definitely touch/enter the hex rings
             const bondLength = totalGap + 0.8; 
             const numDashes = 7;
             const spacing = bondLength / numDashes;
             
             for(let d=0; d<numDashes; d++) {
                 const dash = new THREE.Mesh(geoDash, matHDot);
-                
-                // Position centered around 0 locally
                 const xPos = - (bondLength/2) + (d * spacing) + (spacing/2);
-                
-                // Apply the calculated offset to shift bond into the gap center
                 dash.position.set(xPos + gapOffset, 0, 0);
                 dash.rotation.z = Math.PI / 2;
-                
                 hBondGroup.add(dash);
             }
             
-            // Rotate the entire group to match the helix angle
             hBondGroup.rotation.y = angle;
             hBondGroup.position.set(0, y, 0);
-            
             dnaGroup.add(hBondGroup);
         }
     }
 
-    // Initial Build
     buildDNA();
 
     // 6. ANIMATION & EVENTS
@@ -375,7 +439,7 @@
     twistRange.addEventListener('input', (e) => {
         twistPerPair = parseFloat(e.target.value);
         twistVal.textContent = twistPerPair.toFixed(2);
-        buildDNA(); // Rebuild structure on change
+        buildDNA(); 
     });
 
     function animate() {
@@ -391,11 +455,18 @@
 
     animate();
 
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
+    // --- UPDATED RESIZE HANDLER ---
+    // Resizes based on the viewport container, not the window
+    function handleResize() {
+        const width = viewport.clientWidth;
+        const height = viewport.clientHeight;
+        
+        camera.aspect = width / height;
         camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+        renderer.setSize(width, height);
+    }
+
+    window.addEventListener('resize', handleResize);
 
 </script>
 </body>
